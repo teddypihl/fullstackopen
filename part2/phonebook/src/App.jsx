@@ -1,43 +1,153 @@
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import personService from './services/persons'
+
+const Filter = ({ filter, handleFilterChange }) => {
+  return (
+    <div>
+      filter shown with:
+      <input value={filter} onChange={handleFilterChange} />
+    </div>
+  )
+}
+
+const PersonForm = ({
+  addPerson,
+  newName,
+  newNumber,
+  handleNameChange,
+  handleNumberChange
+}) => {
+  return (
+    <form onSubmit={addPerson}>
+      <div>
+        name:
+        <input value={newName} onChange={handleNameChange} />
+      </div>
+      <div>
+        number:
+        <input value={newNumber} onChange={handleNumberChange} />
+      </div>
+      <div>
+        <button type="submit">add</button>
+      </div>
+    </form>
+  )
+}
+
+const Persons = ({ persons, deletePerson }) => {
+  return (
+    <div>
+      {persons.map(person => (
+        <p key={person.id}>
+          {person.name} {person.number}{' '}
+          <button onClick={() => deletePerson(person.id)}>
+            delete
+          </button>
+        </p>
+      ))}
+    </div>
+  )
+}
 
 const App = () => {
-  const [persons, setPersons] = useState([
-    { name: 'Arto Hellas', number: '040-123456', id: 1 },
-    { name: 'Ada Lovelace', number: '39-44-5323523', id: 2 },
-    { name: 'Dan Abramov', number: '12-43-234345', id: 3 },
-    { name: 'Mary Poppendieck', number: '39-23-6423122', id: 4 }
-  ])
-
+  const [persons, setPersons] = useState([])
   const [newName, setNewName] = useState('')
   const [newNumber, setNewNumber] = useState('')
   const [filter, setFilter] = useState('')
 
+  useEffect(() => {
+    personService.getAll()
+      .then(initialPersons => {
+        setPersons(initialPersons)
+      })
+      .catch(error => {
+        console.error('Could not load persons', error)
+      })
+  }, [])
+
   const addPerson = (event) => {
     event.preventDefault()
 
-    if (newName.trim() === '') {
+    const name = newName.trim()
+    const number = newNumber.trim()
+
+    if (name === '' || number === '') {
       return
     }
 
-    const alreadyExists = persons.some(
-      person => person.name === newName
+    const existingPerson = persons.find(
+      person => person.name === name
     )
 
-    if (alreadyExists) {
-      alert(`${newName} is already added to phonebook`)
+    if (existingPerson) {
+      const confirmUpdate = window.confirm(
+        `${name} is already added to phonebook, replace the old number with a new one?`
+      )
+
+      if (confirmUpdate) {
+        const updatedPerson = {
+          ...existingPerson,
+          number: number
+        }
+
+        personService.update(existingPerson.id, updatedPerson)
+          .then(returnedPerson => {
+            setPersons(current =>
+              current.map(person =>
+                person.id === existingPerson.id
+                  ? returnedPerson
+                  : person
+              )
+            )
+            setNewName('')
+            setNewNumber('')
+          })
+          .catch(error => {
+            console.error('Could not update person', error)
+            alert('Could not update the number')
+          })
+      }
+
       return
     }
 
-    const person = {
-      name: newName,
-      number: newNumber,
-      id: Math.max(0, ...persons.map(p => p.id)) + 1
+    const personObject = {
+      name: name,
+      number: number
     }
 
-    setPersons(persons.concat(person))
-    setNewName('')
-    setNewNumber('')
+    personService.create(personObject)
+      .then(returnedPerson => {
+        setPersons(current => current.concat(returnedPerson))
+        setNewName('')
+        setNewNumber('')
+      })
+      .catch(error => {
+        console.error('Could not add person', error)
+        alert('Could not add person')
+      })
+  }
+
+  const deletePerson = (id) => {
+    const person = persons.find(p => p.id === id)
+
+    if (!person) {
+      return
+    }
+
+    if (window.confirm(`Delete ${person.name}?`)) {
+      personService.remove(id)
+        .then(() => {
+          setPersons(current =>
+            current.filter(p => p.id !== id)
+          )
+        })
+        .catch(error => {
+          console.error('Could not delete person', error)
+          alert('Could not delete person')
+        })
+    }
   }
 
   const personsToShow = persons.filter(person =>
@@ -48,42 +158,33 @@ const App = () => {
     <div>
       <h2>Phonebook</h2>
 
-      <div>
-        filter shown with: <input
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-        />
-      </div>
+      <Filter
+        filter={filter}
+        handleFilterChange={(event) =>
+          setFilter(event.target.value)
+        }
+      />
 
       <h3>Add a new</h3>
 
-      <form onSubmit={addPerson}>
-        <div>
-          name: <input
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-          />
-        </div>
-
-        <div>
-          number: <input
-            value={newNumber}
-            onChange={(event) => setNewNumber(event.target.value)}
-          />
-        </div>
-
-        <div>
-          <button type="submit">add</button>
-        </div>
-      </form>
+      <PersonForm
+        addPerson={addPerson}
+        newName={newName}
+        newNumber={newNumber}
+        handleNameChange={(event) =>
+          setNewName(event.target.value)
+        }
+        handleNumberChange={(event) =>
+          setNewNumber(event.target.value)
+        }
+      />
 
       <h3>Numbers</h3>
 
-      {personsToShow.map(person =>
-        <p key={person.id}>
-          {person.name} {person.number}
-        </p>
-      )}
+      <Persons
+        persons={personsToShow}
+        deletePerson={deletePerson}
+      />
     </div>
   )
 }
